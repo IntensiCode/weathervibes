@@ -1,0 +1,17 @@
+[Applet Factory]
+Id=WeatherVibesFactory
+InProcess=false
+Location=/usr/lib/mate-panel/weather-vibes
+Name=Weather Vibes Factory
+Description=Factory for Weather Vibes applet
+
+[WeatherVibes]
+Name=Weather Vibes
+Description=Feel the weather vibes with multiple providers
+Icon=weather-clear
+MateComponentId=OAFIID:MATE_WeatherVibes;
+Platforms=X11;Wayland;
+X-MATE-Bugzilla-Bugzilla=MATE
+X-MATE-Bugzilla-Product=weather-vibes
+X-MATE-Bugzilla-Component=general
+X-MATE-Bugzilla-Version=1.0
