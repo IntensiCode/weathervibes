@@ -36,13 +36,20 @@ const char* weather_provider_get_description(WeatherProvider provider) {
 }
 
 WeatherData* weather_data_new(void) {
-    return g_new0(WeatherData, 1);
+    WeatherData *data = g_new0(WeatherData, 1);
+    // Initialize rain fields to -1 (not available)
+    data->precipitation_probability = -1;
+    data->rain_intensity = -1;
+    data->snow_intensity = -1;
+    data->sleet_intensity = -1;
+    data->freezing_rain_intensity = -1;
+    data->precipitation_accumulation = -1;
+    return data;
 }
 
 void weather_data_free(WeatherData* data) {
     if (!data) return;
     
-    g_free(data->condition_icon);
     g_free(data->condition_text);
     g_free(data->city);
     g_free(data->wind_direction);
@@ -50,5 +57,14 @@ void weather_data_free(WeatherData* data) {
     g_free(data->sunset);
     g_free(data->raw_output);
     g_free(data->error_message);
+    
+    // Free forecast data
+    if (data->forecast) {
+        for (int i = 0; i < data->forecast_days; i++) {
+            g_free(data->forecast[i].condition_text);
+        }
+        g_free(data->forecast);
+    }
+    
     g_free(data);
 }

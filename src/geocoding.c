@@ -1,35 +1,11 @@
 #include "geocoding.h"
+#include "logger.h"
+#include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <json-glib/json-glib.h>
 
-// Fetch JSON from URL using curl command
-static char* fetch_json_from_url(const char *url) {
-    char *command = g_strdup_printf("curl -s '%s' 2>/dev/null", url);
-    
-    FILE *pipe = popen(command, "r");
-    g_free(command);
-    
-    if (!pipe) return NULL;
-    
-    char buffer[1024];
-    GString *output = g_string_new("");
-    
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        g_string_append(output, buffer);
-    }
-    
-    int ret = pclose(pipe);
-    if (ret != 0) {
-        g_string_free(output, TRUE);
-        return NULL;
-    }
-    
-    char *result = g_strdup(output->str);
-    g_string_free(output, TRUE);
-    return result;
-}
 
 GeoLocation* geocode_location(const char *location) {
     if (!location || strlen(location) == 0) return NULL;
@@ -46,7 +22,7 @@ GeoLocation* geocode_location(const char *location) {
     g_free(encoded_location);
     
     // Fetch JSON response
-    char *json_response = fetch_json_from_url(url);
+    char *json_response = network_fetch_json(url);
     if (!json_response) {
         g_warning("Failed to fetch geocoding data for %s", location);
         return NULL;
@@ -112,7 +88,7 @@ GeoLocation* geocode_location(const char *location) {
     g_object_unref(parser);
     g_free(json_response);
     
-    g_message("Geocoded '%s' to lat=%.4f, lon=%.4f (%s)", 
+    log_info("Geocoded '%s' to lat=%.4f, lon=%.4f (%s)", 
               location, geo_location->latitude, geo_location->longitude,
               geo_location->display_name ? geo_location->display_name : "Unknown");
     

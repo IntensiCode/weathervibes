@@ -1,5 +1,6 @@
 #include "config.h"
 #include "geoip.h"
+#include "logger.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -40,14 +41,14 @@ void config_load(void) {
             g_warning("Failed to load config: %s", error->message);
         } else if (error && error->code == G_FILE_ERROR_NOENT) {
             // Config doesn't exist - this is first run, try GeoIP
-            g_message("No config file found, attempting GeoIP detection for initial city");
+            log_info("No config file found, attempting GeoIP detection for initial city");
             char *detected_city = geoip_get_city();
             if (detected_city) {
                 g_free(g_app_context->config->city);
                 g_app_context->config->city = detected_city;
-                g_message("First run: Using GeoIP detected city: %s", detected_city);
+                log_info("First run: Using GeoIP detected city: %s", detected_city);
             } else {
-                g_message("First run: GeoIP detection failed, using default city: Berlin");
+                log_info("First run: GeoIP detection failed, using default city: Berlin");
             }
         }
         g_clear_error(&error);
@@ -121,7 +122,7 @@ void config_save(void) {
                          g_app_context->config->openweather_api_key ? g_app_context->config->openweather_api_key : "");
     g_key_file_set_string(key_file, "General", "TomorrowAPIKey",
                          g_app_context->config->tomorrow_api_key ? g_app_context->config->tomorrow_api_key : "");
-    g_message("Saving Tomorrow.io API key: '%s' (length: %zu)", 
+    log_debug("Saving Tomorrow.io API key: '%s' (length: %zu)", 
               g_app_context->config->tomorrow_api_key ? g_app_context->config->tomorrow_api_key : "NULL",
               g_app_context->config->tomorrow_api_key ? strlen(g_app_context->config->tomorrow_api_key) : 0);
     

@@ -1,7 +1,9 @@
 .envrc
+.idea
 *.o
-test_*
 /build.sh
-/poc_*
+/test_*
 /weather-applet
 /weather-vibes
+build
+wt

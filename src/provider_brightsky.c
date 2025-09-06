@@ -1,36 +1,78 @@
 #include "provider_brightsky.h"
 #include "geocoding.h"
+#include "weather_conditions.h"
+#include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <json-glib/json-glib.h>
 
-// Fetch JSON from URL using curl command
-static char* fetch_json_from_url(const char *url) {
-    char *command = g_strdup_printf("curl -s '%s' 2>/dev/null", url);
-    
-    FILE *pipe = popen(command, "r");
-    g_free(command);
-    
-    if (!pipe) return NULL;
-    
-    char buffer[1024];
-    GString *output = g_string_new("");
-    
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        g_string_append(output, buffer);
+
+// Map BrightSky condition string to our standardized enum
+static WeatherCondition map_brightsky_condition(const char* condition, const char* icon) {
+    if (!condition && !icon) {
+        return WEATHER_CONDITION_UNKNOWN;
     }
     
-    int ret = pclose(pipe);
-    if (ret != 0) {
-        g_string_free(output, TRUE);
-        return NULL;
+    // BrightSky uses icon strings like "clear-day", "clear-night", "partly-cloudy-day", etc.
+    gboolean is_day = TRUE;
+    if (icon) {
+        is_day = !g_str_has_suffix(icon, "-night");
     }
     
-    char *result = g_strdup(output->str);
-    g_string_free(output, TRUE);
-    return result;
+    // Check condition field first (values: dry, fog, rain, sleet, snow, hail, thunderstorm)
+    if (condition) {
+        if (g_strcmp0(condition, "dry") == 0) {
+            // Need to check icon for cloud coverage
+            if (icon) {
+                if (strstr(icon, "clear")) {
+                    return is_day ? WEATHER_CONDITION_CLEAR_DAY : WEATHER_CONDITION_CLEAR_NIGHT;
+                } else if (strstr(icon, "partly-cloudy")) {
+                    return is_day ? WEATHER_CONDITION_PARTLY_CLOUDY_DAY : WEATHER_CONDITION_PARTLY_CLOUDY_NIGHT;
+                } else if (strstr(icon, "cloudy") || strstr(icon, "overcast")) {
+                    return WEATHER_CONDITION_CLOUDY;
+                }
+            }
+            return is_day ? WEATHER_CONDITION_CLEAR_DAY : WEATHER_CONDITION_CLEAR_NIGHT;
+        } else if (g_strcmp0(condition, "fog") == 0) {
+            return WEATHER_CONDITION_FOG;
+        } else if (g_strcmp0(condition, "rain") == 0) {
+            return WEATHER_CONDITION_RAIN;
+        } else if (g_strcmp0(condition, "sleet") == 0) {
+            return WEATHER_CONDITION_SLEET;
+        } else if (g_strcmp0(condition, "snow") == 0) {
+            return WEATHER_CONDITION_SNOW;
+        } else if (g_strcmp0(condition, "hail") == 0) {
+            return WEATHER_CONDITION_HAIL;
+        } else if (g_strcmp0(condition, "thunderstorm") == 0) {
+            return WEATHER_CONDITION_THUNDERSTORM;
+        }
+    }
+    
+    // Fall back to icon-based detection
+    if (icon) {
+        if (strstr(icon, "clear")) {
+            return is_day ? WEATHER_CONDITION_CLEAR_DAY : WEATHER_CONDITION_CLEAR_NIGHT;
+        } else if (strstr(icon, "partly-cloudy")) {
+            return is_day ? WEATHER_CONDITION_PARTLY_CLOUDY_DAY : WEATHER_CONDITION_PARTLY_CLOUDY_NIGHT;
+        } else if (strstr(icon, "cloudy") || strstr(icon, "overcast")) {
+            return WEATHER_CONDITION_CLOUDY;
+        } else if (strstr(icon, "rain")) {
+            return WEATHER_CONDITION_RAIN;
+        } else if (strstr(icon, "snow")) {
+            return WEATHER_CONDITION_SNOW;
+        } else if (strstr(icon, "sleet")) {
+            return WEATHER_CONDITION_SLEET;
+        } else if (strstr(icon, "thunderstorm")) {
+            return WEATHER_CONDITION_THUNDERSTORM;
+        } else if (strstr(icon, "fog")) {
+            return WEATHER_CONDITION_FOG;
+        }
+    }
+    
+    return WEATHER_CONDITION_UNKNOWN;
 }
 
 
@@ -62,7 +104,7 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
     
     geo_location_free(location);
     
-    char *json_response = fetch_json_from_url(url);
+    char *json_response = network_fetch_json(url);
     if (!json_response) return FALSE;
     
     // Parse JSON response
@@ -104,7 +146,6 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
         // Create an error data structure to show the alert
         (*data)->temperature = -999.0; // Signal missing data
         (*data)->condition_text = g_strdup("Data Unavailable");
-        (*data)->condition_icon = g_strdup("⚠️");
         (*data)->error_message = g_strdup_printf(
             "Critical weather data missing for %s\n\n"
             "The weather station at this location does not provide temperature data.\n"
@@ -145,27 +186,28 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
         (*data)->pressure = (int)json_object_get_double_member(weather, "pressure_msl");
     }
     
-    // Map icon to condition text
+    // Map condition to our enum
     const char *icon = json_object_get_string_member(weather, "icon");
-    if (icon && strstr(icon, "clear")) {
-        (*data)->condition_text = g_strdup("Clear");
-        (*data)->condition_icon = g_strdup("☀️");
-    } else if (icon && strstr(icon, "partly-cloudy")) {
-        (*data)->condition_text = g_strdup("Partly Cloudy");
-        (*data)->condition_icon = g_strdup("⛅");
-    } else if (icon && strstr(icon, "cloudy")) {
-        (*data)->condition_text = g_strdup("Cloudy");
-        (*data)->condition_icon = g_strdup("☁️");
-    } else if (icon && strstr(icon, "rain")) {
-        (*data)->condition_text = g_strdup("Rain");
-        (*data)->condition_icon = g_strdup("🌧️");
-    } else if (icon && strstr(icon, "snow")) {
-        (*data)->condition_text = g_strdup("Snow");
-        (*data)->condition_icon = g_strdup("❄️");
-    } else {
-        (*data)->condition_text = g_strdup("Unknown");
-        (*data)->condition_icon = g_strdup("❓");
+    // Extract precipitation data
+    if (json_object_has_member(weather, "precipitation")) {
+        (*data)->precipitation_accumulation = json_object_get_double_member(weather, "precipitation");
     }
+    
+    if (json_object_has_member(weather, "precipitation_probability")) {
+        double prob = json_object_get_double_member(weather, "precipitation_probability");
+        if (!isnan(prob)) {  // Check for null/NaN
+            (*data)->precipitation_probability = prob;  // Already in percentage
+        }
+    }
+    
+    // Note: BrightSky doesn't differentiate between rain/snow intensity
+    // The 'precipitation' field is total amount in mm
+    
+    const char *condition_str = json_object_has_member(weather, "condition") ? 
+                                json_object_get_string_member(weather, "condition") : NULL;
+    
+    (*data)->condition = map_brightsky_condition(condition_str, icon);
+    (*data)->condition_text = g_strdup(weather_condition_get_display_text((*data)->condition));
     
     (*data)->last_update = time(NULL);
     (*data)->raw_output = g_strdup(json_response);

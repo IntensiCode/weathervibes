@@ -2,117 +2,66 @@
 #include "app.h"
 #include "logger.h"
 #include "geocoding.h"
+#include "weather_conditions.h"
+#include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <json-glib/json-glib.h>
 
-// Fetch JSON from URL using curl command
-static char* fetch_json_from_url(const char *url) {
-    char *command = g_strdup_printf("curl -s \"%s\" 2>&1", url);
-    
-    FILE *pipe = popen(command, "r");
-    g_free(command);
-    
-    if (!pipe) {
-        log_error("Failed to create curl process for URL: %s", url);
-        return NULL;
+
+// Map Tomorrow.io weather code to our standardized enum
+static WeatherCondition map_tomorrow_condition(int weather_code, gboolean is_day) {
+    switch (weather_code) {
+        case 0:     // Unknown
+            return WEATHER_CONDITION_UNKNOWN;
+        case 1000:  // Clear
+            return is_day ? WEATHER_CONDITION_CLEAR_DAY : WEATHER_CONDITION_CLEAR_NIGHT;
+        case 1100:  // Mostly Clear
+            return is_day ? WEATHER_CONDITION_PARTLY_CLOUDY_DAY : WEATHER_CONDITION_PARTLY_CLOUDY_NIGHT;
+        case 1101:  // Partly Cloudy
+            return is_day ? WEATHER_CONDITION_PARTLY_CLOUDY_DAY : WEATHER_CONDITION_PARTLY_CLOUDY_NIGHT;
+        case 1102:  // Mostly Cloudy
+            return WEATHER_CONDITION_CLOUDY;
+        case 1001:  // Cloudy
+            return WEATHER_CONDITION_OVERCAST;
+        case 2000:  // Fog
+        case 2100:  // Light Fog
+            return WEATHER_CONDITION_FOG;
+        case 4000:  // Drizzle
+            return WEATHER_CONDITION_DRIZZLE;
+        case 4001:  // Rain
+            return WEATHER_CONDITION_RAIN;
+        case 4200:  // Light Rain
+            return WEATHER_CONDITION_LIGHT_RAIN;
+        case 4201:  // Heavy Rain
+            return WEATHER_CONDITION_HEAVY_RAIN;
+        case 5000:  // Snow
+            return WEATHER_CONDITION_SNOW;
+        case 5001:  // Flurries
+        case 5100:  // Light Snow
+            return WEATHER_CONDITION_LIGHT_SNOW;
+        case 5101:  // Heavy Snow
+            return WEATHER_CONDITION_HEAVY_SNOW;
+        case 6000:  // Freezing Drizzle
+        case 6001:  // Freezing Rain
+        case 6200:  // Light Freezing Rain
+        case 6201:  // Heavy Freezing Rain
+            return WEATHER_CONDITION_SLEET;  // Using sleet for freezing rain
+        case 7000:  // Ice Pellets
+        case 7101:  // Heavy Ice Pellets
+        case 7102:  // Light Ice Pellets
+            return WEATHER_CONDITION_HAIL;
+        case 8000:  // Thunderstorm
+            return WEATHER_CONDITION_THUNDERSTORM;
+        default:
+            return WEATHER_CONDITION_UNKNOWN;
     }
-    
-    char buffer[1024];
-    GString *output = g_string_new("");
-    
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        g_string_append(output, buffer);
-    }
-    
-    int ret = pclose(pipe);
-    
-    // Log the full response for debugging
-    log_debug("curl exit code: %d", ret);
-    if (output->len > 0) {
-        log_debug("curl full response: %s", output->str);
-    } else {
-        log_warn("curl returned empty response for URL: %s", url);
-    }
-    
-    if (ret != 0) {
-        log_error("curl failed with exit code %d for URL: %s", ret, url);
-        g_string_free(output, TRUE);
-        return NULL;
-    }
-    
-    char *result = g_strdup(output->str);
-    g_string_free(output, TRUE);
-    return result;
 }
 
-// Convert Tomorrow.io weather code to emoji icon and description
-static void get_weather_condition(int weather_code, const char **icon, const char **description) {
-    switch (weather_code) {
-        case 1000: // Clear
-            *icon = "☀️";
-            *description = "Clear";
-            break;
-        case 1100: // Mostly Clear
-            *icon = "🌤️";
-            *description = "Mostly Clear";
-            break;
-        case 1101: // Partly Cloudy
-            *icon = "⛅";
-            *description = "Partly Cloudy";
-            break;
-        case 1102: // Mostly Cloudy
-            *icon = "🌥️";
-            *description = "Mostly Cloudy";
-            break;
-        case 1001: // Cloudy
-            *icon = "☁️";
-            *description = "Cloudy";
-            break;
-        case 2000: // Fog
-        case 2100: // Light Fog
-            *icon = "🌫️";
-            *description = "Fog";
-            break;
-        case 4000: // Drizzle
-        case 4001: // Rain
-        case 4200: // Light Rain
-        case 4201: // Heavy Rain
-            *icon = "🌧️";
-            *description = "Rain";
-            break;
-        case 5000: // Snow
-        case 5001: // Flurries
-        case 5100: // Light Snow
-        case 5101: // Heavy Snow
-            *icon = "❄️";
-            *description = "Snow";
-            break;
-        case 6000: // Freezing Drizzle
-        case 6001: // Freezing Rain
-        case 6200: // Light Freezing Rain
-        case 6201: // Heavy Freezing Rain
-            *icon = "🌨️";
-            *description = "Freezing Rain";
-            break;
-        case 7000: // Ice Pellets
-        case 7101: // Heavy Ice Pellets
-        case 7102: // Light Ice Pellets
-            *icon = "🌨️";
-            *description = "Ice Pellets";
-            break;
-        case 8000: // Thunderstorm
-            *icon = "⛈️";
-            *description = "Thunderstorm";
-            break;
-        default:
-            *icon = "❓";
-            *description = "Unknown";
-            break;
-    }
-}
+
+static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, double lat, double lon, WeatherData* data);
 
 static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
     log_debug("Tomorrow.io: fetch_weather called for city: %s", city ? city : "NULL");
@@ -171,7 +120,7 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
     
     log_debug("Tomorrow.io: Fetching URL: %s", url);
     
-    char *json_response = fetch_json_from_url(url);
+    char *json_response = network_fetch_json(url);
     g_free(url);
     
     if (!json_response) {
@@ -220,7 +169,6 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
         // Create error data
         (*data)->temperature = -999.0;
         (*data)->condition_text = g_strdup("API Error");
-        (*data)->condition_icon = g_strdup("⚠️");
         (*data)->error_message = g_strdup_printf(
             "Tomorrow.io API Error %d: %s\n\n"
             "Please check:\n"
@@ -241,7 +189,6 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
     
     // Extract city name (use what was provided or from geocoding)
     (*data)->city = g_strdup(location->city ? location->city : city);
-    geo_location_free(location);
     
     // Extract weather data from "data.values" object
     if (json_object_has_member(root_obj, "data")) {
@@ -270,32 +217,182 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
                     (*data)->uvi = json_object_get_double_member(values, "uvIndex");
                 }
                 
+                // Precipitation data - Tomorrow.io has the most comprehensive data
+                if (json_object_has_member(values, "precipitationProbability")) {
+                    (*data)->precipitation_probability = json_object_get_double_member(values, "precipitationProbability");
+                }
+                
+                if (json_object_has_member(values, "rainIntensity")) {
+                    (*data)->rain_intensity = json_object_get_double_member(values, "rainIntensity");
+                }
+                
+                if (json_object_has_member(values, "snowIntensity")) {
+                    (*data)->snow_intensity = json_object_get_double_member(values, "snowIntensity");
+                }
+                
+                if (json_object_has_member(values, "sleetIntensity")) {
+                    (*data)->sleet_intensity = json_object_get_double_member(values, "sleetIntensity");
+                }
+                
+                if (json_object_has_member(values, "freezingRainIntensity")) {
+                    (*data)->freezing_rain_intensity = json_object_get_double_member(values, "freezingRainIntensity");
+                }
+                
                 // Weather condition from weather code
                 if (json_object_has_member(values, "weatherCode")) {
                     int weather_code = (int)json_object_get_int_member(values, "weatherCode");
-                    const char *icon = NULL;
-                    const char *description = NULL;
-                    get_weather_condition(weather_code, &icon, &description);
-                    (*data)->condition_icon = g_strdup(icon);
-                    (*data)->condition_text = g_strdup(description);
+                    
+                    // Determine if it's day or night (we can use a simple heuristic for now)
+                    time_t now = time(NULL);
+                    struct tm *tm_info = localtime(&now);
+                    gboolean is_day = (tm_info->tm_hour >= 6 && tm_info->tm_hour < 18);
+                    
+                    // Set the enum value
+                    (*data)->condition = map_tomorrow_condition(weather_code, is_day);
+                    (*data)->condition_text = g_strdup(weather_condition_get_display_text((*data)->condition));
                 }
                 
-                // Additional fields
-                if (json_object_has_member(values, "visibility")) {
-                    double visibility_km = json_object_get_double_member(values, "visibility");
-                    // Store visibility in metadata or create new field if needed
-                }
-                
-                if (json_object_has_member(values, "cloudCover")) {
-                    int cloud_cover = (int)json_object_get_int_member(values, "cloudCover");
-                    // Store cloud cover percentage if needed
-                }
+                // Additional fields available but not currently used:
+                // - visibility (km)
+                // - cloudCover (percentage)
             }
         }
     }
     
     (*data)->last_update = time(NULL);
     (*data)->raw_output = g_strdup(json_response);
+    
+    g_object_unref(parser);
+    g_free(json_response);
+    
+    // Fetch forecast data
+    fetch_tomorrow_forecast(city, g_app_context->config->tomorrow_api_key, lat, lon, *data);
+    
+    geo_location_free(location);
+    return TRUE;
+}
+
+static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, double lat, double lon, WeatherData* data) {
+    if (!data || !api_key) {
+        return FALSE;
+    }
+    
+    log_debug("Tomorrow.io: Fetching forecast for %s", city);
+    
+    // Use g_ascii_formatd to ensure locale-independent formatting
+    char lat_str[32], lon_str[32];
+    g_ascii_formatd(lat_str, sizeof(lat_str), "%.4f", lat);
+    g_ascii_formatd(lon_str, sizeof(lon_str), "%.4f", lon);
+    
+    // Tomorrow.io forecast API endpoint - get daily forecast
+    char *url = g_strdup_printf("https://api.tomorrow.io/v4/weather/forecast?"
+                                "location=%s,%s&timesteps=1d&apikey=%s",
+                                lat_str, lon_str, api_key);
+    
+    log_debug("Tomorrow.io forecast URL: %s", url);
+    
+    char *json_response = network_fetch_json(url);
+    g_free(url);
+    
+    if (!json_response) {
+        log_warn("Tomorrow.io: Failed to fetch forecast");
+        return FALSE;
+    }
+    
+    // Parse JSON response
+    JsonParser *parser = json_parser_new();
+    GError *error = NULL;
+    if (!json_parser_load_from_data(parser, json_response, -1, &error)) {
+        if (error) {
+            log_warn("Failed to parse Tomorrow.io forecast JSON: %s", error->message);
+            g_error_free(error);
+        }
+        g_object_unref(parser);
+        g_free(json_response);
+        return FALSE;
+    }
+    
+    JsonNode *root = json_parser_get_root(parser);
+    if (!JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        g_free(json_response);
+        return FALSE;
+    }
+    
+    JsonObject *root_obj = json_node_get_object(root);
+    
+    // Check for timelines.daily array
+    if (json_object_has_member(root_obj, "timelines")) {
+        JsonObject *timelines = json_object_get_object_member(root_obj, "timelines");
+        if (timelines && json_object_has_member(timelines, "daily")) {
+            JsonArray *daily = json_object_get_array_member(timelines, "daily");
+            
+            if (daily) {
+                guint forecast_count = MIN(json_array_get_length(daily), 5);
+                
+                if (forecast_count > 0) {
+                    data->forecast = g_new0(ForecastDay, forecast_count);
+                    data->forecast_days = forecast_count;
+                    
+                    // Initialize precipitation fields to -1 (not available)
+                    for (guint j = 0; j < forecast_count; j++) {
+                        data->forecast[j].precipitation_probability = -1;
+                        data->forecast[j].precipitation_amount = -1;
+                    }
+                    
+                    for (guint i = 0; i < forecast_count; i++) {
+                        JsonObject *day_obj = json_array_get_object_element(daily, i);
+                        
+                        // Get the date
+                        const char *time_str = json_object_get_string_member(day_obj, "time");
+                        if (time_str) {
+                            // Parse the ISO date string
+                            struct tm tm = {0};
+                            sscanf(time_str, "%d-%d-%dT", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
+                            tm.tm_year -= 1900;
+                            tm.tm_mon -= 1;
+                            data->forecast[i].date = mktime(&tm);
+                        }
+                        
+                        // Get values object
+                        if (json_object_has_member(day_obj, "values")) {
+                            JsonObject *values = json_object_get_object_member(day_obj, "values");
+                            
+                            // Get min/max temperatures
+                            if (json_object_has_member(values, "temperatureMin")) {
+                                data->forecast[i].temp_min = json_object_get_double_member(values, "temperatureMin");
+                            }
+                            if (json_object_has_member(values, "temperatureMax")) {
+                                data->forecast[i].temp_max = json_object_get_double_member(values, "temperatureMax");
+                            }
+                            
+                            // Get weather code for the day
+                            if (json_object_has_member(values, "weatherCodeMax")) {
+                                int weather_code = json_object_get_int_member(values, "weatherCodeMax");
+                                data->forecast[i].condition = map_tomorrow_condition(weather_code, TRUE);
+                                data->forecast[i].condition_text = g_strdup(weather_condition_get_display_text(data->forecast[i].condition));
+                            }
+                            
+                            // Get precipitation probability and amount
+                            if (json_object_has_member(values, "precipitationProbabilityMax")) {
+                                data->forecast[i].precipitation_probability = json_object_get_double_member(values, "precipitationProbabilityMax");
+                            } else {
+                                data->forecast[i].precipitation_probability = -1;
+                            }
+                            
+                            if (json_object_has_member(values, "precipitationAccumulation")) {
+                                data->forecast[i].precipitation_amount = json_object_get_double_member(values, "precipitationAccumulation");
+                            } else {
+                                data->forecast[i].precipitation_amount = -1;
+                            }
+                        }
+                    }
+                    
+                    log_info("Tomorrow.io: Successfully fetched %d day forecast", forecast_count);
+                }
+            }
+        }
+    }
     
     g_object_unref(parser);
     g_free(json_response);

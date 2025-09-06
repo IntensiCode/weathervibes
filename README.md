@@ -1,181 +1,124 @@
-# Weather Vibes
+# Weather Vibes - MATE Panel Weather Applet
 
-A comprehensive MATE Panel weather applet for Linux with multiple weather providers and geocoding support.
+[![CI](https://github.com/yourusername/mate-weather/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mate-weather/actions/workflows/ci.yml)
+
+A modern weather applet for the MATE desktop panel with multiple weather providers and emoji support.
 
 ## Features
 
-- **MATE Panel applet** with dynamic weather display (emoji icons + temperature)
-- **Automatic GeoIP location detection** on first run (falls back to Berlin if detection fails)
-- **Multiple weather providers**:
-  - AnsiWeather (Global coverage via OpenWeatherMap)
-  - Bright Sky (DWD - Germany, high accuracy for German locations)
-  - OpenWeather (Global coverage, requires free API key)
-  - Tomorrow.io (Global coverage, requires free API key)
-- **Automatic geocoding** using OpenStreetMap Nominatim
-- **Configurable settings** via preferences dialog:
-  - City/location
-  - Update interval (5 minutes, 10 minutes, 15 minutes, 30 minutes, or 1 hour)
-  - Temperature unit (Celsius/Fahrenheit)
-  - Weather provider selection
-  - API key management
-- **Detailed weather information** including:
-  - Temperature and "feels like"
-  - Weather conditions with emoji icons
-  - Humidity, wind speed/direction
-  - Atmospheric pressure
-  - UV index
-  - Sunrise/sunset times (where available)
-- **Automatic updates** at configurable intervals
-- **Right-click menu** for preferences and about
-- **Comprehensive logging** to `/tmp/weather.log`
-
-## Dependencies
-
-- GTK3
-- MATE Panel development libraries (`libmate-panel-applet-dev`)
-- JSON-GLib (`libjson-glib-dev`)
-- curl (for API requests)
-- ansiweather (for AnsiWeather provider: `sudo apt install ansiweather`)
+- 🌤️ Multiple weather providers:
+  - AnsiWeather (Global, no API key required)
+  - Bright Sky (DWD - Germany)
+  - OpenWeather (requires free API key)
+  - Tomorrow.io (requires free API key)
+- 🌡️ Real-time weather updates
+- 🌅 Day/night detection using sunrise/sunset data
+- 💾 Configuration stored in GSettings
+- 🧪 Comprehensive test suite
 
 ## Building
 
-Install dependencies:
-```bash
-sudo apt install libmate-panel-applet-dev libgtk-3-dev libjson-glib-dev ansiweather curl
-```
+### Dependencies
 
-Build the applet:
-```bash
-PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig make
-```
+- GTK+ 3.0
+- MATE Panel 1.24+
+- JSON-GLib
+- libsoup 2.4
 
-## Installation
+### Ubuntu/Debian
 
 ```bash
-sudo PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig make install
-```
+sudo apt install build-essential pkg-config libgtk-3-dev \
+  libmate-panel-applet-4-dev libjson-glib-dev libsoup2.4-dev
 
-The applet will be installed to `/usr/lib/mate-panel/` and can be added to your MATE Panel.
-
-To uninstall:
-```bash
-sudo make uninstall
+make
+sudo make install
 ```
 
 ## Testing
 
-Test all weather providers:
+Run the test suite:
+
 ```bash
-PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig make test_providers
-./test_providers "Your City"
+make check
 ```
 
-## Adding to MATE Panel
+Test weather providers:
 
-1. Right-click on your MATE Panel
-2. Select "Add to Panel..."
-3. Look for "Weather Applet" in the list
-4. Click "Add"
-5. Right-click the applet and select "Preferences" to configure
+```bash
+make test
+./test_providers "Berlin"
+```
 
 ## Configuration
 
-The applet stores its configuration in `~/.config/weather-vibes/config.ini`
+The applet stores configuration in GSettings under the schema:
+`org.mate.panel.applet.weather-vibes`
 
-Default settings:
-- City: Auto-detected via GeoIP (or Berlin if detection fails)
-- Update interval: 10 minutes
-- Temperature unit: Celsius
-- Provider: AnsiWeather
+Available settings:
+- `city`: Location for weather data
+- `use-celsius`: Temperature unit (true for Celsius, false for Fahrenheit)
+- `update-interval-minutes`: Update frequency (1-60 minutes)
+- `provider`: Weather provider (0-3)
+- API keys for OpenWeather and Tomorrow.io
 
-Configuration is managed through the Preferences dialog (right-click → Preferences).
+## Development
 
-## Weather Providers
+### Project Structure
 
-### AnsiWeather (Default)
-- **Coverage**: Global
-- **API Key**: Not required (uses built-in OpenWeatherMap key)
-- **Best for**: General use worldwide
+```
+src/
+├── weather_applet.c         # Main applet entry point
+├── weather_provider.c       # Provider abstraction layer
+├── provider_*.c            # Individual provider implementations
+├── weather_conditions.c    # Weather condition mapping and emojis
+├── day_night.c            # Day/night detection logic
+├── config_gsettings.c     # GSettings configuration
+├── json_helpers.c         # JSON parsing utilities
+└── ...
 
-### Bright Sky (DWD)
-- **Coverage**: Germany only
-- **API Key**: Not required
-- **Best for**: German locations (most accurate)
-- **Data source**: Deutscher Wetterdienst (German Weather Service)
+test/
+├── test_weather_conditions.c  # Weather conditions tests
+├── test_day_night.c           # Day/night logic tests
+├── test_json_helpers.c        # JSON helper tests
+└── test_providers.c           # Provider integration tests
+```
 
-### OpenWeather
-- **Coverage**: Global
-- **API Key**: Required (free at https://openweathermap.org/api)
-- **Best for**: Users wanting more control over their API usage
-- **Features**: Sunrise/sunset times, detailed conditions
+### Contributing
 
-### Tomorrow.io
-- **Coverage**: Global
-- **API Key**: Required (free at https://www.tomorrow.io/weather-api/)
-- **Best for**: Advanced weather data with machine learning predictions
-- **Features**: Detailed atmospheric data, weather codes
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests with `make check`
+5. Submit a pull request
 
-## Getting API Keys
+## CI/CD Setup
 
-### OpenWeather API Key
-1. Visit https://openweathermap.org/api
-2. Sign up for a free account
-3. Go to "API keys" in your account
-4. Copy your API key
-5. Enter it in the applet's Preferences dialog
+### GitHub Secrets
 
-### Tomorrow.io API Key
-1. Visit https://www.tomorrow.io/weather-api/
-2. Sign up for a free account
-3. Go to your dashboard
-4. Copy your API key
-5. Enter it in the applet's Preferences dialog
+For CI to test all weather providers, you need to set up GitHub secrets:
 
-## Weather Icons
+1. Go to your repository Settings → Secrets and variables → Actions
+2. Add the following repository secrets:
+   - `OPENWEATHER_API_KEY`: Your OpenWeather API key
+   - `TOMORROW_API_KEY`: Your Tomorrow.io API key
 
-The applet uses emoji weather icons:
-- ☀️ Clear/Sunny
-- 🌤️ Mostly Clear
-- ⛅ Partly Cloudy
-- 🌥️ Mostly Cloudy
-- ☁️ Cloudy/Overcast
-- 🌧️ Rain
-- ⛈️ Thunderstorm
-- ❄️ Snow
-- 🌨️ Sleet/Freezing Rain
-- 🌫️ Fog/Mist
+Without these secrets, CI will still run but will skip testing the providers that require API keys.
 
-## Troubleshooting
+### Local Testing
 
-### Logs
-Check `/tmp/weather.log` for detailed debug information.
+To run tests locally with API keys:
 
-### Common Issues
+```bash
+export OPENWEATHER_API_KEY="your-key-here"
+export TOMORROW_API_KEY="your-key-here"
+make check
+```
 
-**Weather not updating:**
-- Check your internet connection
-- Verify the city name is spelled correctly
-- Check the log file for API errors
+## Security
 
-**API key errors:**
-- Ensure you've entered the API key correctly
-- Check that your API key is active
-- For Tomorrow.io, ensure you're within the free tier limits
+⚠️ **NEVER commit API keys to the repository!** Always use environment variables or GitHub secrets.
 
-**Locale issues (wrong coordinates):**
-- The applet now uses locale-independent formatting
-- If you see wrong locations, restart the applet
+## License
 
-## Usage
-
-1. **Left-click** the applet icon to open detailed weather popup with:
-   - Full weather conditions
-   - Temperature, feels like, humidity, pressure
-   - Wind speed and direction
-   - UV index and sunrise/sunset times
-   - Refresh button for immediate update
-2. **Right-click** for menu options:
-   - Preferences: Configure city, provider, and API keys
-   - About: View applet information
-3. Weather updates automatically at your configured interval
-4. Hover over the icon for a tooltip with current conditions
+GPL-3.0

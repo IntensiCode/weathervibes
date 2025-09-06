@@ -1,4 +1,5 @@
 #include "provider_ansiweather.h"
+#include "weather_conditions.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,25 +9,25 @@
 static char* strip_ansi_codes(const char *input) {
     regex_t regex;
     regmatch_t match;
-    char *output = g_strdup(input);
-    char *temp = g_malloc(strlen(input) + 1);
+    GString *result = g_string_new("");
+    const char *p = input;
     
     if (regcomp(&regex, "\x1b\\[[0-9;]*m", REG_EXTENDED) != 0) {
-        g_free(temp);
-        return output;
+        return g_strdup(input);
     }
     
-    while (regexec(&regex, output, 1, &match, 0) == 0) {
-        strcpy(temp, output);
-        memmove(temp + match.rm_so, 
-                temp + match.rm_eo, 
-                strlen(temp + match.rm_eo) + 1);
-        strcpy(output, temp);
+    // Build result string without ANSI codes
+    while (regexec(&regex, p, 1, &match, 0) == 0) {
+        // Append text before the match
+        g_string_append_len(result, p, match.rm_so);
+        // Skip the ANSI code
+        p += match.rm_eo;
     }
+    // Append remaining text
+    g_string_append(result, p);
     
     regfree(&regex);
-    g_free(temp);
-    return output;
+    return g_string_free(result, FALSE);
 }
 
 static char* extract_value(const char *text, const char *prefix) {
@@ -40,10 +41,7 @@ static char* extract_value(const char *text, const char *prefix) {
     if (!end) end = start + strlen(start);
     
     int len = end - start;
-    char *result = g_malloc(len + 1);
-    strncpy(result, start, len);
-    result[len] = '\0';
-    
+    char *result = g_strndup(start, len);
     g_strstrip(result);
     return result;
 }
@@ -100,9 +98,7 @@ static gboolean ansiweather_fetch_weather(const char* city, WeatherData** data) 
         if (colon) {
             // Extract city
             int city_len = colon - city_start;
-            (*data)->city = g_malloc(city_len + 1);
-            strncpy((*data)->city, city_start, city_len);
-            (*data)->city[city_len] = '\0';
+            (*data)->city = g_strndup(city_start, city_len);
             g_strstrip((*data)->city);
             
             // Extract temperature (after colon)
@@ -111,9 +107,7 @@ static gboolean ansiweather_fetch_weather(const char* city, WeatherData** data) 
             char *temp_end = strstr(temp_start, " ");
             if (temp_end) {
                 int temp_len = temp_end - temp_start;
-                char *temp_str = g_malloc(temp_len + 1);
-                strncpy(temp_str, temp_start, temp_len);
-                temp_str[temp_len] = '\0';
+                char *temp_str = g_strndup(temp_start, temp_len);
                 (*data)->temperature = atof(temp_str);
                 g_free(temp_str);
                 success = TRUE;
@@ -175,11 +169,44 @@ static gboolean ansiweather_fetch_weather(const char* city, WeatherData** data) 
     (*data)->sunrise = NULL;
     (*data)->sunset = NULL;
     
-    // AnsiWeather doesn't provide condition text in the basic output
-    // We'd need to use the extended format (-a) to get it
-    // For now, set a default
-    (*data)->condition_icon = g_strdup("🌤️");
-    (*data)->condition_text = g_strdup("Current Weather");
+    // Parse weather symbol from ansiweather output to determine condition
+    // Ansiweather shows symbols like ☀, ☁, 🌧, ❄, etc after temperature
+    (*data)->condition = WEATHER_CONDITION_UNKNOWN;
+    
+    // Look for weather symbols in the output
+    if (strstr(clean, "☀")) {
+        // Determine day/night based on current time
+        time_t now = time(NULL);
+        struct tm *tm = localtime(&now);
+        gboolean is_day = (tm->tm_hour >= 6 && tm->tm_hour < 20);
+        (*data)->condition = is_day ? WEATHER_CONDITION_CLEAR_DAY : WEATHER_CONDITION_CLEAR_NIGHT;
+        (*data)->condition_text = g_strdup("Clear");
+    } else if (strstr(clean, "☁")) {
+        (*data)->condition = WEATHER_CONDITION_CLOUDY;
+        (*data)->condition_text = g_strdup("Cloudy");
+    } else if (strstr(clean, "⛅")) {
+        time_t now = time(NULL);
+        struct tm *tm = localtime(&now);
+        gboolean is_day = (tm->tm_hour >= 6 && tm->tm_hour < 20);
+        (*data)->condition = is_day ? WEATHER_CONDITION_PARTLY_CLOUDY_DAY : WEATHER_CONDITION_PARTLY_CLOUDY_NIGHT;
+        (*data)->condition_text = g_strdup("Partly Cloudy");
+    } else if (strstr(clean, "🌧") || strstr(clean, "🌦")) {
+        (*data)->condition = WEATHER_CONDITION_RAIN;
+        (*data)->condition_text = g_strdup("Rain");
+    } else if (strstr(clean, "⛈") || strstr(clean, "🌩")) {
+        (*data)->condition = WEATHER_CONDITION_THUNDERSTORM;
+        (*data)->condition_text = g_strdup("Thunderstorm");
+    } else if (strstr(clean, "❄") || strstr(clean, "🌨")) {
+        (*data)->condition = WEATHER_CONDITION_SNOW;
+        (*data)->condition_text = g_strdup("Snow");
+    } else if (strstr(clean, "🌫")) {
+        (*data)->condition = WEATHER_CONDITION_FOG;
+        (*data)->condition_text = g_strdup("Fog");
+    } else {
+        // Default fallback
+        (*data)->condition_text = g_strdup("Current Weather");
+    }
+    
     
     g_free(clean);
     g_string_free(output, TRUE);

@@ -1,35 +1,11 @@
 #include "geoip.h"
+#include "logger.h"
+#include "network.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <json-glib/json-glib.h>
 
-// Fetch JSON from URL using curl command
-static char* fetch_json_from_url(const char *url) {
-    char *command = g_strdup_printf("curl -s --max-time 5 '%s' 2>/dev/null", url);
-    
-    FILE *pipe = popen(command, "r");
-    g_free(command);
-    
-    if (!pipe) return NULL;
-    
-    char buffer[1024];
-    GString *output = g_string_new("");
-    
-    while (fgets(buffer, sizeof(buffer), pipe)) {
-        g_string_append(output, buffer);
-    }
-    
-    int ret = pclose(pipe);
-    if (ret != 0) {
-        g_string_free(output, TRUE);
-        return NULL;
-    }
-    
-    char *result = g_strdup(output->str);
-    g_string_free(output, TRUE);
-    return result;
-}
 
 char* geoip_get_city(void) {
     // Try multiple GeoIP services for redundancy
@@ -41,9 +17,9 @@ char* geoip_get_city(void) {
     };
     
     for (int i = 0; services[i] != NULL; i++) {
-        g_message("Trying GeoIP service: %s", services[i]);
+        log_debug("Trying GeoIP service: %s", services[i]);
         
-        char *json_response = fetch_json_from_url(services[i]);
+        char *json_response = network_fetch_json(services[i]);
         if (!json_response) {
             g_debug("GeoIP service %d failed to respond", i);
             continue;
@@ -104,7 +80,7 @@ char* geoip_get_city(void) {
                 location = g_strdup(city);
             }
             
-            g_message("GeoIP detected location: %s", location);
+            log_info("GeoIP detected location: %s", location);
             g_object_unref(parser);
             g_free(json_response);
             return location;
