@@ -13,6 +13,16 @@ typedef enum {
     PROVIDER_COUNT  // Useful for array sizing and validation
 } WeatherProvider;
 
+// Hourly forecast data
+typedef struct {
+    time_t timestamp;              // Unix timestamp for this hour
+    double temperature;            // Temperature in Celsius
+    double precipitation_probability;  // 0-100%, -1 if not available
+    double rain_amount;            // Rain in mm, 0 if none, -1 if not available
+    double snow_amount;            // Snow in mm, 0 if none, -1 if not available
+    gboolean has_thunderstorm;     // TRUE if thunderstorm expected
+} HourlyData;
+
 // Forecast data for a single day
 typedef struct {
     time_t date;           // Date of forecast
@@ -54,6 +64,10 @@ typedef struct {
     // 5-day forecast data
     ForecastDay *forecast;  // Array of forecast days
     int forecast_days;      // Number of forecast days (0-5)
+    
+    // Hourly forecast data (next 24 hours)
+    HourlyData *hourly_forecast;  // Array of hourly data
+    int hourly_count;             // Number of hours available (0-24)
 } WeatherData;
 
 // Provider interface - each provider implements these functions

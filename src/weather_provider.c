@@ -66,5 +66,10 @@ void weather_data_free(WeatherData* data) {
         g_free(data->forecast);
     }
     
+    // Free hourly forecast data
+    if (data->hourly_forecast) {
+        g_free(data->hourly_forecast);
+    }
+    
     g_free(data);
 }

@@ -396,6 +396,116 @@ static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, d
     
     g_object_unref(parser);
     g_free(json_response);
+    
+    // Fetch hourly forecast data (next 24 hours)
+    // Tomorrow.io supports 1h timesteps
+    char *hourly_url = g_strdup_printf("https://api.tomorrow.io/v4/weather/forecast?"
+                                       "location=%s,%s&timesteps=1h&apikey=%s",
+                                       lat_str, lon_str, api_key);
+    
+    log_debug("Tomorrow.io hourly URL: %s", hourly_url);
+    
+    char *hourly_json = network_fetch_json(hourly_url);
+    g_free(hourly_url);
+    
+    if (hourly_json) {
+        JsonParser *hourly_parser = json_parser_new();
+        if (json_parser_load_from_data(hourly_parser, hourly_json, -1, NULL)) {
+            JsonNode *hourly_root = json_parser_get_root(hourly_parser);
+            if (JSON_NODE_HOLDS_OBJECT(hourly_root)) {
+                JsonObject *hourly_obj = json_node_get_object(hourly_root);
+                
+                // Check for timelines.hourly array
+                if (json_object_has_member(hourly_obj, "timelines")) {
+                    JsonObject *timelines = json_object_get_object_member(hourly_obj, "timelines");
+                    if (timelines && json_object_has_member(timelines, "hourly")) {
+                        JsonArray *hourly = json_object_get_array_member(timelines, "hourly");
+                        
+                        if (hourly) {
+                            guint array_len = json_array_get_length(hourly);
+                            int hourly_count = MIN(array_len, 24);  // Limit to 24 hours
+                            
+                            if (hourly_count > 0) {
+                                data->hourly_forecast = g_new0(HourlyData, hourly_count);
+                                data->hourly_count = hourly_count;
+                                
+                                for (int i = 0; i < hourly_count; i++) {
+                                    JsonObject *hour_obj = json_array_get_object_element(hourly, i);
+                                    if (!hour_obj) continue;
+                                    
+                                    // Get timestamp
+                                    const char *time_str = json_object_get_string_member(hour_obj, "time");
+                                    if (time_str) {
+                                        // Parse ISO timestamp
+                                        struct tm tm = {0};
+                                        int year, mon, day, hour, min, sec;
+                                        if (sscanf(time_str, "%d-%d-%dT%d:%d:%d", 
+                                                  &year, &mon, &day, &hour, &min, &sec) >= 3) {
+                                            tm.tm_year = year - 1900;
+                                            tm.tm_mon = mon - 1;
+                                            tm.tm_mday = day;
+                                            tm.tm_hour = hour;
+                                            tm.tm_min = min;
+                                            tm.tm_sec = sec;
+                                            data->hourly_forecast[i].timestamp = mktime(&tm);
+                                        }
+                                    }
+                                    
+                                    // Get values
+                                    if (json_object_has_member(hour_obj, "values")) {
+                                        JsonObject *values = json_object_get_object_member(hour_obj, "values");
+                                        
+                                        // Temperature
+                                        if (json_object_has_member(values, "temperature")) {
+                                            data->hourly_forecast[i].temperature = 
+                                                json_object_get_double_member(values, "temperature");
+                                        }
+                                        
+                                        // Precipitation probability
+                                        if (json_object_has_member(values, "precipitationProbability")) {
+                                            data->hourly_forecast[i].precipitation_probability = 
+                                                json_object_get_double_member(values, "precipitationProbability");
+                                        } else {
+                                            data->hourly_forecast[i].precipitation_probability = -1;
+                                        }
+                                        
+                                        // Rain intensity (mm/hr)
+                                        data->hourly_forecast[i].rain_amount = 0;
+                                        if (json_object_has_member(values, "rainIntensity")) {
+                                            data->hourly_forecast[i].rain_amount = 
+                                                json_object_get_double_member(values, "rainIntensity");
+                                        }
+                                        
+                                        // Snow intensity (mm/hr)
+                                        data->hourly_forecast[i].snow_amount = 0;
+                                        if (json_object_has_member(values, "snowIntensity")) {
+                                            data->hourly_forecast[i].snow_amount = 
+                                                json_object_get_double_member(values, "snowIntensity");
+                                        }
+                                        
+                                        // Check for thunderstorm using weather code
+                                        data->hourly_forecast[i].has_thunderstorm = FALSE;
+                                        if (json_object_has_member(values, "weatherCode")) {
+                                            int code = json_object_get_int_member(values, "weatherCode");
+                                            // Tomorrow.io weather codes 8000-8002 are thunderstorm
+                                            if (code >= 8000 && code <= 8002) {
+                                                data->hourly_forecast[i].has_thunderstorm = TRUE;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                log_info("Tomorrow.io: Successfully fetched %d hours of hourly data", hourly_count);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        g_object_unref(hourly_parser);
+        g_free(hourly_json);
+    }
+    
     return TRUE;
 }
 

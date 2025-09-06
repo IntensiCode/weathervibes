@@ -10,6 +10,10 @@
 #include <time.h>
 #include <stdio.h>
 
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
 // Map OpenWeather condition codes to our enum
 static WeatherCondition map_openweather_condition(int weather_id, const char *icon_code) {
     // Thunderstorm (2xx)
@@ -350,8 +354,10 @@ static gboolean fetch_openweather_forecast(const char* city, const char* api_key
         return FALSE;
     }
     
+    guint list_length = json_array_get_length(list);
+    
     // Get precipitation probability from first forecast item (closest to now)
-    if (json_array_get_length(list) > 0) {
+    if (list_length > 0) {
         JsonObject *first_item = json_array_get_object_element(list, 0);
         if (first_item) {
             double pop = 0;
@@ -361,10 +367,69 @@ static gboolean fetch_openweather_forecast(const char* city, const char* api_key
         }
     }
     
+    // Extract hourly data (OpenWeather provides 3-hour intervals, we'll use up to 8 entries = 24 hours)
+    int hourly_count = MIN(list_length, 8);  // 8 * 3 hours = 24 hours
+    if (hourly_count > 0) {
+        data->hourly_forecast = g_new0(HourlyData, hourly_count);
+        data->hourly_count = hourly_count;
+        
+        for (int i = 0; i < hourly_count; i++) {
+            JsonObject *item = json_array_get_object_element(list, i);
+            if (!item) continue;
+            
+            // Get timestamp
+            int dt = 0;
+            if (json_get_int(item, "dt", &dt)) {
+                data->hourly_forecast[i].timestamp = (time_t)dt;
+            }
+            
+            // Get temperature
+            JsonObject *main_obj = json_get_object(item, "main");
+            if (main_obj) {
+                json_get_double(main_obj, "temp", &data->hourly_forecast[i].temperature);
+            }
+            
+            // Get precipitation probability
+            double pop = 0;
+            if (json_get_double(item, "pop", &pop)) {
+                data->hourly_forecast[i].precipitation_probability = pop * 100;  // Convert to percentage
+            } else {
+                data->hourly_forecast[i].precipitation_probability = -1;
+            }
+            
+            // Get rain amount (3-hour accumulation)
+            data->hourly_forecast[i].rain_amount = 0;
+            JsonObject *rain_obj = json_get_object(item, "rain");
+            if (rain_obj) {
+                json_get_double(rain_obj, "3h", &data->hourly_forecast[i].rain_amount);
+            }
+            
+            // Get snow amount (3-hour accumulation)
+            data->hourly_forecast[i].snow_amount = 0;
+            JsonObject *snow_obj = json_get_object(item, "snow");
+            if (snow_obj) {
+                json_get_double(snow_obj, "3h", &data->hourly_forecast[i].snow_amount);
+            }
+            
+            // Check for thunderstorm
+            data->hourly_forecast[i].has_thunderstorm = FALSE;
+            JsonArray *weather_array = json_get_array(item, "weather");
+            if (weather_array && json_array_get_length(weather_array) > 0) {
+                JsonObject *weather = json_array_get_object_element(weather_array, 0);
+                int weather_id = 0;
+                if (json_get_int(weather, "id", &weather_id)) {
+                    // Thunderstorm codes are 200-299
+                    if (weather_id >= 200 && weather_id < 300) {
+                        data->hourly_forecast[i].has_thunderstorm = TRUE;
+                    }
+                }
+            }
+        }
+    }
+    
     // Process forecast data - group by day and find min/max temps
     GHashTable *daily_data = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     
-    guint list_length = json_array_get_length(list);
     for (guint i = 0; i < list_length; i++) {
         JsonObject *item = json_array_get_object_element(list, i);
         if (!item) continue;

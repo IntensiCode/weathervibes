@@ -158,9 +158,20 @@ WeatherData* weather_fetcher_copy_data(const WeatherData *data) {
             copy->forecast[i].temp_min = data->forecast[i].temp_min;
             copy->forecast[i].temp_max = data->forecast[i].temp_max;
             copy->forecast[i].condition = data->forecast[i].condition;
+            copy->forecast[i].precipitation_probability = data->forecast[i].precipitation_probability;
+            copy->forecast[i].precipitation_amount = data->forecast[i].precipitation_amount;
             if (data->forecast[i].condition_text) {
                 copy->forecast[i].condition_text = g_strdup(data->forecast[i].condition_text);
             }
+        }
+    }
+    
+    // Copy hourly forecast data
+    if (data->hourly_forecast && data->hourly_count > 0) {
+        copy->hourly_count = data->hourly_count;
+        copy->hourly_forecast = g_new0(HourlyData, data->hourly_count);
+        for (int i = 0; i < data->hourly_count; i++) {
+            copy->hourly_forecast[i] = data->hourly_forecast[i];
         }
     }
     

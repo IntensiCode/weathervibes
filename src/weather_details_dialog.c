@@ -4,6 +4,7 @@
 #include "weather_conditions.h"
 #include "day_night.h"
 #include "config.h"
+#include "weather_graph.h"
 #include <time.h>
 #include <string.h>
 
@@ -185,6 +186,23 @@ static void populate_weather_details(GtkWidget *vbox, WeatherData *data, AppConf
     gtk_label_set_xalign(GTK_LABEL(label), 0.0);
     gtk_box_pack_start(GTK_BOX(right_column), label, FALSE, FALSE, 5);
     g_free(text);
+    
+    // Add 24-hour temperature graph if hourly data is available
+    if (data->hourly_forecast && data->hourly_count > 0) {
+        // Add separator
+        GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
+        gtk_box_pack_start(GTK_BOX(vbox), separator, FALSE, FALSE, 5);
+        
+        // Graph title
+        label = gtk_label_new(NULL);
+        gtk_label_set_markup(GTK_LABEL(label), "<b>24-Hour Forecast</b>");
+        gtk_box_pack_start(GTK_BOX(vbox), label, FALSE, FALSE, 3);
+        
+        // Create and add the weather graph
+        GtkWidget *graph = weather_graph_new();
+        weather_graph_update(graph, data);
+        gtk_box_pack_start(GTK_BOX(vbox), graph, FALSE, FALSE, 5);
+    }
     
     // 5-day forecast at the bottom
     if (data->forecast && data->forecast_days > 0) {
