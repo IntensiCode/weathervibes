@@ -113,16 +113,42 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     }
     cairo_stroke(cr);
     
-    // Draw precipitation bars (if available)
+    // Draw precipitation probability curve (as a line)
+    cairo_set_source_rgba(cr, 0.2, 0.4, 0.8, 0.8);  // Blue for rain probability
+    cairo_set_line_width(cr, 2);
+    
+    gboolean has_precip_data = FALSE;
     for (int i = 0; i < hour_count; i++) {
         double precip_prob = data->hourly_forecast[i].precipitation_probability;
         if (precip_prob >= 0) {
             double x = margin_left + (graph_width * i / (double)(hour_count - 1));
-            double bar_width = graph_width / (double)hour_count * 0.8;
-            double bar_height = graph_height * (precip_prob / 100.0) * 0.3;  // Max 30% of graph height
+            // Scale precipitation to use bottom 40% of graph
+            double y = margin_top + graph_height * (1.0 - (precip_prob / 100.0) * 0.4);
             
-            // Blue for rain probability
-            cairo_set_source_rgba(cr, 0.2, 0.4, 0.8, 0.4);
+            if (!has_precip_data) {
+                cairo_move_to(cr, x, y);
+                has_precip_data = TRUE;
+            } else {
+                cairo_line_to(cr, x, y);
+            }
+        }
+    }
+    if (has_precip_data) {
+        cairo_stroke(cr);
+    }
+    
+    // Draw rain amount bars (narrower blocks)
+    for (int i = 0; i < hour_count; i++) {
+        double rain_amount = data->hourly_forecast[i].rain_amount;
+        if (rain_amount > 0) {
+            double x = margin_left + (graph_width * i / (double)(hour_count - 1));
+            double bar_width = graph_width / (double)hour_count * 0.4;  // Half the previous width
+            // Scale rain amount: 10mm = 30% of graph height
+            double bar_height = graph_height * (rain_amount / 10.0) * 0.3;
+            if (bar_height > graph_height * 0.3) bar_height = graph_height * 0.3;  // Cap at 30%
+            
+            // Darker blue for rain amount
+            cairo_set_source_rgba(cr, 0.1, 0.3, 0.7, 0.6);
             cairo_rectangle(cr, x - bar_width/2, margin_top + graph_height - bar_height, 
                           bar_width, bar_height);
             cairo_fill(cr);
@@ -165,20 +191,30 @@ static gboolean on_draw(GtkWidget *widget, cairo_t *cr, gpointer user_data) {
     cairo_move_to(cr, margin_left + 25, legend_y + 3);
     cairo_show_text(cr, "Temperature");
     
-    // Precipitation bar
-    cairo_set_source_rgba(cr, 0.2, 0.4, 0.8, 0.4);
-    cairo_rectangle(cr, margin_left + 120, legend_y - 5, 15, 10);
+    // Precipitation % line
+    cairo_set_source_rgba(cr, 0.2, 0.4, 0.8, 0.8);
+    cairo_set_line_width(cr, 2);
+    cairo_move_to(cr, margin_left + 120, legend_y);
+    cairo_line_to(cr, margin_left + 140, legend_y);
+    cairo_stroke(cr);
+    cairo_set_source_rgba(cr, fg_color.red, fg_color.green, fg_color.blue, 0.8);
+    cairo_move_to(cr, margin_left + 145, legend_y + 3);
+    cairo_show_text(cr, "Rain %");
+    
+    // Rain amount bar
+    cairo_set_source_rgba(cr, 0.1, 0.3, 0.7, 0.6);
+    cairo_rectangle(cr, margin_left + 200, legend_y - 5, 8, 10);
     cairo_fill(cr);
     cairo_set_source_rgba(cr, fg_color.red, fg_color.green, fg_color.blue, 0.8);
-    cairo_move_to(cr, margin_left + 140, legend_y + 3);
-    cairo_show_text(cr, "Precip %");
+    cairo_move_to(cr, margin_left + 212, legend_y + 3);
+    cairo_show_text(cr, "Rain mm");
     
     // Thunderstorm indicator
     cairo_set_source_rgb(cr, 0.8, 0.8, 0);
-    cairo_arc(cr, margin_left + 220, legend_y, 3, 0, 2 * M_PI);
+    cairo_arc(cr, margin_left + 280, legend_y, 3, 0, 2 * M_PI);
     cairo_fill(cr);
     cairo_set_source_rgba(cr, fg_color.red, fg_color.green, fg_color.blue, 0.8);
-    cairo_move_to(cr, margin_left + 228, legend_y + 3);
+    cairo_move_to(cr, margin_left + 288, legend_y + 3);
     cairo_show_text(cr, "Thunder");
     
     return FALSE;
