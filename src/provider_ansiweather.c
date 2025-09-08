@@ -211,6 +211,96 @@ static gboolean ansiweather_fetch_weather(const char* city, WeatherData** data) 
     g_free(clean);
     g_string_free(output, TRUE);
     
+    // Fetch 5-day forecast
+    if (success) {
+        command = g_strdup_printf("ansiweather -l \"%s\" -f 5 2>&1", city);
+        pipe = popen(command, "r");
+        g_free(command);
+        
+        if (pipe) {
+            GString *forecast_output = g_string_new("");
+            while (fgets(buffer, sizeof(buffer), pipe)) {
+                g_string_append(forecast_output, buffer);
+            }
+            
+            if (pclose(pipe) == 0) {
+                // Parse forecast data
+                char *forecast_clean = strip_ansi_codes(forecast_output->str);
+                
+                // Extract forecast entries (format: "Mon Sep 08: 24/11 °C")
+                // We'll parse up to 5 days
+                (*data)->forecast = g_new0(ForecastDay, 5);
+                (*data)->forecast_days = 0;
+                
+                // Split by " - " to get individual days
+                char **days = g_strsplit(forecast_clean, " - ", -1);
+                int day_count = 0;
+                
+                for (int i = 0; days[i] != NULL && day_count < 5; i++) {
+                    // Parse each day entry: "Mon Sep 08: 24/11 °C"
+                    char *day_str = days[i];
+                    
+                    // For the first entry, skip "Berlin forecast:" prefix
+                    if (i == 0 && strstr(day_str, "forecast:")) {
+                        char *forecast_start = strstr(day_str, "forecast:");
+                        if (forecast_start) {
+                            day_str = forecast_start + 9; // Skip "forecast:"
+                            while (*day_str == ' ') day_str++;
+                        }
+                    }
+                    
+                    // Find the LAST colon (the one before temperature)
+                    char *colon = strrchr(day_str, ':');
+                    if (colon) {
+                        // Parse date from day name
+                        struct tm tm = {0};
+                        time_t now = time(NULL);
+                        struct tm *tm_now = localtime(&now);
+                        tm.tm_year = tm_now->tm_year;
+                        tm.tm_isdst = -1;
+                        
+                        // Simple date parsing - for today + i days
+                        time_t forecast_date = now + (i * 86400); // Add i days
+                        (*data)->forecast[day_count].date = forecast_date;
+                        
+                        // Parse temperatures after colon "24/11 °C"
+                        char *temp_str = colon + 1;
+                        while (*temp_str == ' ') temp_str++;
+                        
+                        // Extract max temp
+                        char *slash = strchr(temp_str, '/');
+                        if (slash) {
+                            *slash = '\0';
+                            (*data)->forecast[day_count].temp_max = atof(temp_str);
+                            
+                            // Extract min temp
+                            char *min_temp = slash + 1;
+                            char *space = strchr(min_temp, ' ');
+                            if (space) {
+                                *space = '\0';
+                                (*data)->forecast[day_count].temp_min = atof(min_temp);
+                            }
+                        }
+                        
+                        // AnsiWeather doesn't provide forecast conditions or precipitation
+                        (*data)->forecast[day_count].condition = WEATHER_CONDITION_UNKNOWN;
+                        (*data)->forecast[day_count].condition_text = NULL;
+                        (*data)->forecast[day_count].precipitation_probability = -1;
+                        (*data)->forecast[day_count].precipitation_amount = -1;
+                        
+                        day_count++;
+                    }
+                }
+                
+                (*data)->forecast_days = day_count;
+                g_strfreev(days);
+                g_free(forecast_clean);
+            }
+            
+            g_string_free(forecast_output, TRUE);
+        }
+    }
+    
     if (!success) {
         weather_data_free(*data);
         *data = NULL;

@@ -517,8 +517,8 @@ static gboolean fetch_openweather_forecast(const char* city, const char* api_key
         data->forecast[i].precipitation_amount = -1;
     }
     
-    // Skip first day (today) and get next 5
-    GList *iter = keys ? keys->next : NULL;
+    // Get first 5 days including today
+    GList *iter = keys;
     while (iter && forecast_count < 5) {
         typedef struct {
             double min_temp;
