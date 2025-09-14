@@ -115,23 +115,8 @@ gboolean update_weather(gpointer data) {
         g_object_unref(weather_applet->fetch_cancellable);
     }
     
-    // Check cache to avoid too frequent updates
-    if (g_app_context) {
-        g_mutex_lock(&g_app_context->data_mutex);
-        time_t now = time(NULL);
-        time_t last_fetch = g_app_context->last_fetch_time[weather_applet->config->provider];
-        const char *cached_city = g_app_context->cached_city;
-        g_mutex_unlock(&g_app_context->data_mutex);
-        
-        // If same city and less than 5 minutes since last fetch, skip
-        if (cached_city && 
-            g_strcmp0(cached_city, weather_applet->config->city) == 0 &&
-            (now - last_fetch) < 300) {
-            log_info("Using cached data for %s (fetched %ld seconds ago)",
-                    weather_applet->config->city, (now - last_fetch));
-            return TRUE;
-        }
-    }
+    // Note: Cache checking is handled by weather_fetcher_update_with_provider()
+    // which uses WEATHER_CACHE_TIMEOUT_SECONDS (60 seconds)
     
     log_info("Starting async weather fetch for %s with provider %d", 
              weather_applet->config->city, weather_applet->config->provider);

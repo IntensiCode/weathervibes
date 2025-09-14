@@ -21,6 +21,7 @@ typedef struct _WeatherApplet {
     guint update_timer;
     GMutex data_mutex;
     GCancellable *fetch_cancellable;  // For cancelling in-flight fetches
+    GtkActionGroup *action_group;     // For updating menu item sensitivity
 } WeatherApplet;
 
 // Function declarations that ui_dialogs.c needs

@@ -29,6 +29,9 @@ static void destroy_applet(WeatherApplet *weather_applet) {
         g_cancellable_cancel(weather_applet->fetch_cancellable);
         g_object_unref(weather_applet->fetch_cancellable);
     }
+    if (weather_applet->action_group) {
+        g_object_unref(weather_applet->action_group);
+    }
     if (weather_applet->details_window && GTK_IS_WINDOW(weather_applet->details_window)) {
         gtk_widget_destroy(weather_applet->details_window);
         weather_applet->details_window = NULL;
@@ -79,6 +82,32 @@ static void destroy_applet(WeatherApplet *weather_applet) {
 static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer data) {
     WeatherApplet *weather_applet = (WeatherApplet *)data;
     
+    // Handle right mouse button click - update menu sensitivity before showing
+    if (event->button == 3 && weather_applet->action_group) {  // Right button
+        GtkAction *refresh_action = gtk_action_group_get_action(
+            weather_applet->action_group, "Refresh");
+        
+        if (refresh_action) {
+            gboolean should_enable = FALSE;
+            
+            if (weather_applet->current_weather) {
+                time_t now = time(NULL);
+                time_t elapsed = now - weather_applet->current_weather->last_update;
+                should_enable = (elapsed >= WEATHER_CACHE_TIMEOUT_SECONDS);
+                log_debug("Right click - refresh menu %s (elapsed: %ld seconds)",
+                         should_enable ? "enabled" : "disabled", elapsed);
+            } else {
+                // No weather data yet - enable refresh
+                should_enable = TRUE;
+                log_debug("Right click - refresh menu enabled (no data yet)");
+            }
+            
+            gtk_action_set_sensitive(refresh_action, should_enable);
+        }
+        // Let the event continue to show the menu
+        return FALSE;
+    }
+    
     // Handle left mouse button click - toggle details window
     if (event->button == 1) {  // Left button
         if (weather_applet->details_window && GTK_IS_WINDOW(weather_applet->details_window)) {
@@ -92,13 +121,54 @@ static gboolean on_button_press(GtkWidget *widget, GdkEventButton *event, gpoint
         return TRUE;  // Event handled
     }
     
-    // Let right-click go through for the menu
+    // Let other clicks go through
     return FALSE;  // Let other handlers process this event
 }
 
 // Removed update_weather function - now in weather_update.c
 
+// Refresh menu callback
+static void on_refresh_weather(GtkAction *action, WeatherApplet *weather_applet) {
+    (void)action;  // Unused
+    
+    // Safety check (shouldn't happen since menu item would be disabled)
+    if (weather_applet->current_weather) {
+        time_t now = time(NULL);
+        time_t elapsed = now - weather_applet->current_weather->last_update;
+        if (elapsed >= WEATHER_CACHE_TIMEOUT_SECONDS) {
+            log_info("Manual refresh requested (elapsed: %ld seconds)", elapsed);
+            update_weather(weather_applet);  // Normal update - cache already expired!
+            
+            // Restart the update timer to prevent immediate re-fetch
+            if (weather_applet->update_timer) {
+                log_info("Restarting update timer after manual refresh");
+                weather_resume_timer_stop(weather_applet->update_timer);
+                weather_applet->update_timer = weather_resume_timer_start(
+                    weather_applet,
+                    weather_applet->config->update_interval_minutes);
+            }
+        } else {
+            log_info("Refresh requested but too soon (elapsed: %ld seconds)", elapsed);
+        }
+    } else {
+        // No current weather data - just fetch
+        log_info("Manual refresh requested (no current data)");
+        update_weather(weather_applet);
+        
+        // Restart the update timer to prevent immediate re-fetch
+        if (weather_applet->update_timer) {
+            log_info("Restarting update timer after manual refresh");
+            weather_resume_timer_stop(weather_applet->update_timer);
+            weather_applet->update_timer = weather_resume_timer_start(
+                weather_applet,
+                weather_applet->config->update_interval_minutes);
+        }
+    }
+}
+
 static const GtkActionEntry menu_actions[] = {
+    {"Refresh", "view-refresh", "_Refresh", "F5",
+     "Refresh weather data", G_CALLBACK(on_refresh_weather)},
     {"Preferences", "preferences-system", "_Preferences", NULL, 
      "Configure the weather applet", G_CALLBACK(show_preferences_dialog)},
     {"About", "help-about", "_About", NULL, 
@@ -106,6 +176,8 @@ static const GtkActionEntry menu_actions[] = {
 };
 
 static const char *menu_xml = 
+    "<menuitem name=\"Refresh\" action=\"Refresh\"/>"
+    "<separator/>"
     "<menuitem name=\"Preferences\" action=\"Preferences\"/>"
     "<menuitem name=\"About\" action=\"About\"/>";
 
@@ -185,7 +257,7 @@ static gboolean weather_applet_fill(MatePanelApplet *applet) {
     gtk_action_group_add_actions(action_group, menu_actions, 
                                  G_N_ELEMENTS(menu_actions), weather_applet);
     mate_panel_applet_setup_menu(applet, menu_xml, action_group);
-    g_object_unref(action_group);
+    weather_applet->action_group = action_group;  // Store reference for menu updates
     
     // Connect destroy signal
     g_signal_connect_swapped(applet, "destroy", 

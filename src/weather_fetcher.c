@@ -42,7 +42,7 @@ gboolean weather_fetcher_update_with_provider(const char *city, WeatherProvider 
     }
     g_mutex_unlock(&g_app_context->data_mutex);
     
-    if (!city_changed && last_fetch > 0 && (now - last_fetch) < 60) {
+    if (!city_changed && last_fetch > 0 && (now - last_fetch) < WEATHER_CACHE_TIMEOUT_SECONDS) {
         // Check if we have cached data for THIS provider - must lock for safe access
         g_mutex_lock(&g_app_context->data_mutex);
         if (g_app_context->provider_cache[provider] != NULL) {

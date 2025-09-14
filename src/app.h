@@ -5,6 +5,9 @@
 #include <time.h>
 #include "weather_provider.h"
 
+// Cache timeout for weather data (in seconds)
+#define WEATHER_CACHE_TIMEOUT_SECONDS 60
+
 typedef struct {
     char *city;
     int update_interval_minutes;
