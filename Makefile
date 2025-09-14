@@ -23,7 +23,7 @@ endif
 
 # Panel applet
 APPLET_TARGET = weather-vibes
-APPLET_SOURCES = src/weather_applet.c src/weather_details_dialog.c src/weather_graph.c src/preferences_dialog.c src/about_dialog.c src/preferences_handler.c src/applet_config.c src/weather_display.c src/weather_update_async.c src/async_fetch.c src/day_night.c src/config_gsettings.c src/json_helpers.c src/weather_fetcher.c src/weather_provider.c src/weather_conditions.c src/network.c src/provider_ansiweather.c src/provider_brightsky.c src/provider_openweather.c src/provider_tomorrow.c src/logger.c src/geocoding.c src/geoip.c
+APPLET_SOURCES = src/weather_applet.c src/weather_details_dialog.c src/weather_graph.c src/preferences_dialog.c src/about_dialog.c src/preferences_handler.c src/applet_config.c src/weather_display.c src/weather_update_async.c src/async_fetch.c src/day_night.c src/config_gsettings.c src/json_helpers.c src/weather_fetcher.c src/weather_provider.c src/weather_conditions.c src/network.c src/provider_ansiweather.c src/provider_brightsky.c src/provider_openweather.c src/provider_tomorrow.c src/logger.c src/geocoding.c src/geoip.c src/weather_resume.c
 APPLET_OBJECTS = $(patsubst src/%.c,build/%.o,$(APPLET_SOURCES))
 
 # Installation directories

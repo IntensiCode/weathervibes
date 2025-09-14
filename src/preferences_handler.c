@@ -6,6 +6,7 @@
 #include "weather_display.h"
 #include "app.h"
 #include "logger.h"
+#include "weather_resume.h"
 
 // External global context
 extern AppContext *g_app_context;
@@ -48,12 +49,12 @@ static void handle_provider_change(WeatherApplet *weather_applet, int old_provid
 // Handle timer restart with new interval
 static void restart_update_timer(WeatherApplet *weather_applet, int interval_minutes) {
     if (weather_applet->update_timer) {
-        g_source_remove(weather_applet->update_timer);
+        weather_resume_timer_stop(weather_applet->update_timer);
     }
     
-    weather_applet->update_timer = g_timeout_add_seconds(
-        interval_minutes * 60,
-        update_weather, weather_applet);
+    weather_applet->update_timer = weather_resume_timer_start(
+        weather_applet,
+        interval_minutes);
 }
 
 void handle_preferences_save(WeatherApplet *weather_applet, 

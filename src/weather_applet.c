@@ -16,13 +16,14 @@
 #include "weather_update.h"
 #include "network.h"
 #include "logger.h"
+#include "weather_resume.h"
 
 // Global app context
 AppContext *g_app_context = NULL;
 
 static void destroy_applet(WeatherApplet *weather_applet) {
     if (weather_applet->update_timer) {
-        g_source_remove(weather_applet->update_timer);
+        weather_resume_timer_stop(weather_applet->update_timer);
     }
     if (weather_applet->fetch_cancellable) {
         g_cancellable_cancel(weather_applet->fetch_cancellable);
@@ -197,10 +198,10 @@ static gboolean weather_applet_fill(MatePanelApplet *applet) {
     // Start weather updates
     log_info("About to call update_weather from weather_applet_fill");
     update_weather(weather_applet);
-    log_info("Returned from update_weather, setting up timer");
-    weather_applet->update_timer = g_timeout_add_seconds(
-        weather_applet->config->update_interval_minutes * 60,
-        update_weather, weather_applet);
+    log_info("Returned from update_weather, setting up resume-aware timer");
+    weather_applet->update_timer = weather_resume_timer_start(
+        weather_applet,
+        weather_applet->config->update_interval_minutes);
     
     return TRUE;
 }
