@@ -36,3 +36,8 @@ Consider adding these if needed:
 - Mutex protection rules for shared data access
 - Provider cache architecture notes
 - Test coverage requirements
+
+## Suspend/Resume Behavior
+The weather applet uses D-Bus systemd signals to detect suspend/resume events.
+On resume, if the system was asleep for more than 30 seconds, an immediate
+weather update is triggered regardless of the normal update interval.
