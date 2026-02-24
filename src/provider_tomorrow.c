@@ -162,8 +162,10 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
     // Check for API error
     if (json_object_has_member(root_obj, "code")) {
         int code = json_object_get_int_member(root_obj, "code");
-        const char *type = json_object_get_string_member(root_obj, "type");
-        const char *message = json_object_get_string_member(root_obj, "message");
+        const char *type = json_object_has_member(root_obj, "type") ?
+                           json_object_get_string_member(root_obj, "type") : NULL;
+        const char *message = json_object_has_member(root_obj, "message") ?
+                              json_object_get_string_member(root_obj, "message") : NULL;
         g_warning("Tomorrow.io API error %d (%s): %s", code, type ? type : "Unknown", message ? message : "Unknown error");
         
         // Create error data
@@ -197,11 +199,21 @@ static gboolean tomorrow_fetch_weather(const char* city, WeatherData** data) {
             JsonObject *values = json_object_get_object_member(data_obj, "values");
             
             if (values) {
-                (*data)->temperature = json_object_get_double_member(values, "temperature");
-                (*data)->feels_like = json_object_get_double_member(values, "temperatureApparent");
-                (*data)->humidity = (int)json_object_get_int_member(values, "humidity");
-                (*data)->pressure = (int)json_object_get_double_member(values, "pressureSeaLevel");
-                (*data)->wind_speed = json_object_get_double_member(values, "windSpeed");
+                if (json_object_has_member(values, "temperature")) {
+                    (*data)->temperature = json_object_get_double_member(values, "temperature");
+                }
+                if (json_object_has_member(values, "temperatureApparent")) {
+                    (*data)->feels_like = json_object_get_double_member(values, "temperatureApparent");
+                }
+                if (json_object_has_member(values, "humidity")) {
+                    (*data)->humidity = (int)json_object_get_int_member(values, "humidity");
+                }
+                if (json_object_has_member(values, "pressureSeaLevel")) {
+                    (*data)->pressure = (int)json_object_get_double_member(values, "pressureSeaLevel");
+                }
+                if (json_object_has_member(values, "windSpeed")) {
+                    (*data)->wind_speed = json_object_get_double_member(values, "windSpeed");
+                }
                 
                 // Wind direction conversion
                 if (json_object_has_member(values, "windDirection")) {
@@ -344,7 +356,8 @@ static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, d
                         JsonObject *day_obj = json_array_get_object_element(daily, i);
                         
                         // Get the date
-                        const char *time_str = json_object_get_string_member(day_obj, "time");
+                        const char *time_str = json_object_has_member(day_obj, "time") ?
+                                               json_object_get_string_member(day_obj, "time") : NULL;
                         if (time_str) {
                             // Parse the ISO date string
                             struct tm tm = {0};
@@ -357,6 +370,9 @@ static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, d
                         // Get values object
                         if (json_object_has_member(day_obj, "values")) {
                             JsonObject *values = json_object_get_object_member(day_obj, "values");
+                            if (!values) {
+                                continue;
+                            }
                             
                             // Get min/max temperatures
                             if (json_object_has_member(values, "temperatureMin")) {
@@ -434,7 +450,8 @@ static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, d
                                     if (!hour_obj) continue;
                                     
                                     // Get timestamp
-                                    const char *time_str = json_object_get_string_member(hour_obj, "time");
+                                    const char *time_str = json_object_has_member(hour_obj, "time") ?
+                                                           json_object_get_string_member(hour_obj, "time") : NULL;
                                     if (time_str) {
                                         // Parse ISO timestamp
                                         struct tm tm = {0};
@@ -454,6 +471,9 @@ static gboolean fetch_tomorrow_forecast(const char* city, const char* api_key, d
                                     // Get values
                                     if (json_object_has_member(hour_obj, "values")) {
                                         JsonObject *values = json_object_get_object_member(hour_obj, "values");
+                                        if (!values) {
+                                            continue;
+                                        }
                                         
                                         // Temperature
                                         if (json_object_has_member(values, "temperature")) {

@@ -6,15 +6,18 @@
 #include <string.h>
 #include <time.h>
 
+static gpointer init_providers_once(gpointer user_data) {
+    (void)user_data;
+    weather_provider_init();
+    return NULL;
+}
+
 gboolean weather_fetcher_update_with_provider(const char *city, WeatherProvider provider) {
     if (!g_app_context) return FALSE;
     
-    // Initialize providers if not done already
-    static gboolean providers_initialized = FALSE;
-    if (!providers_initialized) {
-        weather_provider_init();
-        providers_initialized = TRUE;
-    }
+    // Initialize providers once in a thread-safe way
+    static GOnce providers_initialized = G_ONCE_INIT;
+    g_once(&providers_initialized, init_providers_once, NULL);
     
     // Check cache: don't fetch if we've fetched this provider within the last minute
     // AND we actually have weather data stored

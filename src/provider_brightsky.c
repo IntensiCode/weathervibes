@@ -126,8 +126,15 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
     }
     
     JsonNode *root = json_parser_get_root(parser);
+    if (!JSON_NODE_HOLDS_OBJECT(root)) {
+        g_object_unref(parser);
+        g_free(json_response);
+        return FALSE;
+    }
+
     JsonObject *root_obj = json_node_get_object(root);
-    JsonObject *weather = json_object_get_object_member(root_obj, "weather");
+    JsonObject *weather = json_object_has_member(root_obj, "weather") ?
+                          json_object_get_object_member(root_obj, "weather") : NULL;
     
     if (!weather) {
         g_object_unref(parser);
@@ -192,7 +199,8 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
     }
     
     // Map condition to our enum
-    const char *icon = json_object_get_string_member(weather, "icon");
+    const char *icon = json_object_has_member(weather, "icon") ?
+                       json_object_get_string_member(weather, "icon") : NULL;
     // Extract precipitation data
     if (json_object_has_member(weather, "precipitation")) {
         (*data)->precipitation_accumulation = json_object_get_double_member(weather, "precipitation");
@@ -242,8 +250,10 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
         JsonParser *forecast_parser = json_parser_new();
         if (json_parser_load_from_data(forecast_parser, forecast_json, -1, NULL)) {
             JsonNode *forecast_root = json_parser_get_root(forecast_parser);
-            JsonObject *forecast_obj = json_node_get_object(forecast_root);
-            JsonArray *weather_array = json_object_get_array_member(forecast_obj, "weather");
+            JsonObject *forecast_obj = JSON_NODE_HOLDS_OBJECT(forecast_root) ?
+                                       json_node_get_object(forecast_root) : NULL;
+            JsonArray *weather_array = (forecast_obj && json_object_has_member(forecast_obj, "weather")) ?
+                                       json_object_get_array_member(forecast_obj, "weather") : NULL;
             
             if (weather_array) {
                 guint array_len = json_array_get_length(weather_array);
@@ -258,7 +268,8 @@ static gboolean brightsky_fetch_weather(const char* city, WeatherData** data) {
                         if (!hour_obj) continue;
                         
                         // Parse timestamp
-                        const char *timestamp_str = json_object_get_string_member(hour_obj, "timestamp");
+                        const char *timestamp_str = json_object_has_member(hour_obj, "timestamp") ?
+                                                    json_object_get_string_member(hour_obj, "timestamp") : NULL;
                         if (timestamp_str) {
                             struct tm tm_hour = {0};
                             if (strptime(timestamp_str, "%Y-%m-%dT%H:%M:%S", &tm_hour)) {
