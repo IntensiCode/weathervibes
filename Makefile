@@ -42,6 +42,13 @@ all: $(APPLET_TARGET)
 	@chmod -R a+rwX $(BUILDDIR) 2>/dev/null || true
 	@chmod a+rw $(APPLET_TARGET) 2>/dev/null || true
 
+$(BUILDDIR)/build_info.h: | $(BUILDDIR)
+	@COMMIT=$$(git rev-parse --short=12 HEAD 2>/dev/null || echo "unknown"); \
+	DIRTY=$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo 1 || echo 0); \
+	printf '%s\n' '#ifndef BUILD_INFO_H' '#define BUILD_INFO_H' '' \
+	  "#define WEATHER_VIBES_GIT_COMMIT \"$$COMMIT\"" \
+	  "#define WEATHER_VIBES_GIT_DIRTY $$DIRTY" '' '#endif // BUILD_INFO_H' > $(BUILDDIR)/build_info.h
+
 # Test program
 test: test_providers
 	./test_providers
@@ -54,8 +61,8 @@ test_providers: test/test_providers.c $(SRCDIR)/json_helpers.c $(SRCDIR)/weather
 $(APPLET_TARGET): $(APPLET_OBJECTS)
 	$(CC) $(APPLET_OBJECTS) -o $@ $(LDFLAGS)
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c | $(BUILDDIR)
-	$(CC) $(CFLAGS) $(PKGCONFIG_CFLAGS) -c $< -o $@
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(BUILDDIR)/build_info.h | $(BUILDDIR)
+	$(CC) $(CFLAGS) -I$(BUILDDIR) $(PKGCONFIG_CFLAGS) -c $< -o $@
 
 $(BUILDDIR):
 	mkdir -p $(BUILDDIR)

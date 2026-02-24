@@ -1,17 +1,28 @@
 #include "about_dialog.h"
 #include "version.h"
+#include "build_info.h"
 #include <gtk/gtk.h>
+#include <string.h>
 
 void show_about_dialog(GtkAction *action, WeatherApplet *weather_applet) {
     (void)action; // Unused
     (void)weather_applet; // Unused
     
     GtkWidget *dialog;
+    gchar *version_text;
     
     dialog = gtk_about_dialog_new();
     
     gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(dialog), "Weather Vibes");
-    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), WEATHER_VIBES_VERSION);
+    if (strstr(WEATHER_VIBES_VERSION, "-dev") != NULL) {
+        version_text = g_strdup_printf("%s (%s%s)",
+                                       WEATHER_VIBES_VERSION,
+                                       WEATHER_VIBES_GIT_COMMIT,
+                                       WEATHER_VIBES_GIT_DIRTY ? "-dirty" : "");
+    } else {
+        version_text = g_strdup(WEATHER_VIBES_VERSION);
+    }
+    gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(dialog), version_text);
     gtk_about_dialog_set_comments(GTK_ABOUT_DIALOG(dialog), 
                                   "☀️ 🌤️ ⛅ 🌧️ ⛈️ 🌨️\n\n"
                                   "A vibrant weather applet for MATE Panel\n\n"
@@ -26,4 +37,5 @@ void show_about_dialog(GtkAction *action, WeatherApplet *weather_applet) {
     
     gtk_dialog_run(GTK_DIALOG(dialog));
     gtk_widget_destroy(dialog);
+    g_free(version_text);
 }

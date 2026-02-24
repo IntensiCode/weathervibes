@@ -17,6 +17,8 @@
 #include "network.h"
 #include "logger.h"
 #include "weather_resume.h"
+#include "version.h"
+#include "build_info.h"
 
 // Global app context
 AppContext *g_app_context = NULL;
@@ -187,7 +189,14 @@ static gboolean weather_applet_fill(MatePanelApplet *applet) {
     
     // Initialize logging first
     logger_init();
-    log_info("Weather applet starting up");
+    if (strstr(WEATHER_VIBES_VERSION, "-dev") != NULL) {
+        log_info("Weather applet starting up (version %s, commit %s%s)",
+                 WEATHER_VIBES_VERSION,
+                 WEATHER_VIBES_GIT_COMMIT,
+                 WEATHER_VIBES_GIT_DIRTY ? "-dirty" : "");
+    } else {
+        log_info("Weather applet starting up (version %s)", WEATHER_VIBES_VERSION);
+    }
     
     // Set applet flags
     mate_panel_applet_set_flags(applet, MATE_PANEL_APPLET_EXPAND_MINOR);
