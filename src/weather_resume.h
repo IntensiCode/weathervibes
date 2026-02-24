@@ -13,4 +13,8 @@ guint weather_resume_timer_start(WeatherApplet *applet, guint interval_minutes);
 // Stop the resume-aware timer
 void weather_resume_timer_stop(guint timer_id);
 
+// Notify resume detector about async fetch result.
+void weather_resume_notify_fetch_failed(WeatherApplet *applet);
+void weather_resume_notify_fetch_success(WeatherApplet *applet);
+
 #endif // WEATHER_RESUME_H

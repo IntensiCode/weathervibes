@@ -5,10 +5,16 @@
 #include "async_fetch.h"
 #include "app.h"
 #include "logger.h"
+#include "weather_resume.h"
 #include <gtk/gtk.h>
 
 // External global context
 extern AppContext *g_app_context;
+
+static gboolean update_display_idle(gpointer data) {
+    update_display((WeatherApplet *)data);
+    return G_SOURCE_REMOVE;
+}
 
 // Callback for when async weather fetch completes
 static void on_weather_fetch_complete(GObject *source_object,
@@ -31,6 +37,7 @@ static void on_weather_fetch_complete(GObject *source_object,
             log_info("Weather fetch was cancelled");
         } else {
             log_error("Weather fetch failed: %s", error->message);
+            weather_resume_notify_fetch_failed(weather_applet);
             
             // Clear display to show error
             g_mutex_lock(&weather_applet->data_mutex);
@@ -41,7 +48,7 @@ static void on_weather_fetch_complete(GObject *source_object,
             g_mutex_unlock(&weather_applet->data_mutex);
             
             // Update display on main thread
-            g_idle_add((GSourceFunc)update_display, weather_applet);
+            g_idle_add(update_display_idle, weather_applet);
         }
         g_error_free(error);
         
@@ -76,9 +83,11 @@ static void on_weather_fetch_complete(GObject *source_object,
             g_mutex_unlock(&g_app_context->data_mutex);
         }
         g_mutex_unlock(&weather_applet->data_mutex);
+
+        weather_resume_notify_fetch_success(weather_applet);
         
         // Update display on main thread
-        g_idle_add((GSourceFunc)update_display, weather_applet);
+        g_idle_add(update_display_idle, weather_applet);
     }
     
     // Clear the cancellable reference
