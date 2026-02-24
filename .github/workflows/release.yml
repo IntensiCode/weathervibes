@@ -83,17 +83,17 @@ jobs:
           tar \
           gzip
     
-    - name: Set version in code
+    - name: Set build version
       run: |
         VERSION=$(jq -r '"\(.major).\(.minor).\(.patch)"' version.json)
         FULL_VERSION="${VERSION}.${{ github.run_number }}"
-        echo "#define WEATHER_VIBES_VERSION \"${FULL_VERSION}\"" > src/version.h
+        echo "APPLET_VERSION=${FULL_VERSION}" >> $GITHUB_ENV
     
     - name: Build
       run: |
         export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig
         make clean
-        make
+        make APPLET_VERSION="$APPLET_VERSION"
     
     - name: Run all tests
       env:

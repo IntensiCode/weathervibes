@@ -1,6 +1,9 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -g
 
+BASE_VERSION := $(shell python3 -c 'import json; d = json.load(open("version.json")); print("%s.%s.%s" % (d["major"], d["minor"], d["patch"]))' 2>/dev/null || echo "0.0.0")
+APPLET_VERSION ?= $(BASE_VERSION)-dev
+
 # Only check packages when building (not for clean)
 ifneq ($(MAKECMDGOALS),clean)
     # Ensure system pkg-config paths are included (for Homebrew/Linuxbrew users)
@@ -49,6 +52,10 @@ $(BUILDDIR)/build_info.h: | $(BUILDDIR)
 	  "#define WEATHER_VIBES_GIT_COMMIT \"$$COMMIT\"" \
 	  "#define WEATHER_VIBES_GIT_DIRTY $$DIRTY" '' '#endif // BUILD_INFO_H' > $(BUILDDIR)/build_info.h
 
+$(BUILDDIR)/app_version.h: version.json | $(BUILDDIR)
+	@printf '%s\n' '#ifndef APP_VERSION_H' '#define APP_VERSION_H' '' \
+	  "#define WEATHER_VIBES_VERSION \"$(APPLET_VERSION)\"" '' '#endif // APP_VERSION_H' > $(BUILDDIR)/app_version.h
+
 # Test program
 test: test_providers
 	./test_providers
@@ -61,7 +68,7 @@ test_providers: test/test_providers.c $(SRCDIR)/json_helpers.c $(SRCDIR)/weather
 $(APPLET_TARGET): $(APPLET_OBJECTS)
 	$(CC) $(APPLET_OBJECTS) -o $@ $(LDFLAGS)
 
-$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(BUILDDIR)/build_info.h | $(BUILDDIR)
+$(BUILDDIR)/%.o: $(SRCDIR)/%.c $(BUILDDIR)/build_info.h $(BUILDDIR)/app_version.h | $(BUILDDIR)
 	$(CC) $(CFLAGS) -I$(BUILDDIR) $(PKGCONFIG_CFLAGS) -c $< -o $@
 
 $(BUILDDIR):
